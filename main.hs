@@ -1,4 +1,7 @@
--- | Tree Fractal.
+-- | Ray Tracer.
+-- Modified Heavily from the example below
+
+-- Tree Fractal.
 --	Based on ANUPlot code by Clem Baker-Finch.
 --	
 import Graphics.Gloss
