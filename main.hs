@@ -48,9 +48,26 @@ main = play (InWindow "Test" (640, 480) (20,  20))
 		stepWorld
 
 
+pixelTest :: Int -> Int -> [Word8]
+pixelTest x y = 
+	let wx :: Word8 = fromIntegral x in
+	let wy :: Word8 = fromIntegral y in
+	[
+		fromIntegral $ Data.Bits.xor wx wy, 
+		fromIntegral $ Data.Bits.xor wx wy, 
+		fromIntegral $ Data.Bits.xor wx wy, 
+		255
+	]
+
+pixelData :: [Word8]
+pixelData = concat [pixelTest x y | y <- [0..479], x <- [0..639]]
+
 renderWorld :: TracerWorld -> Picture
 renderWorld TracerWorld { playerPos = UnalignedPos p } = 
-	Translate (x p) (y p) $ bitmapTest 
+	let bitmapData = Data.ByteString.pack $ pixelData in
+	bitmapOfByteString	
+		640 480 (BitmapFormat TopToBottom PxRGBA) 
+		bitmapData False
 renderWorld _ = Blank
 
 handleEvent :: Event -> TracerWorld -> TracerWorld
@@ -59,12 +76,6 @@ handleEvent (EventKey k Up _ _)  w = w { keys = S.delete k (keys w) }
 handleEvent _ w = w
 
 
-
-pixelTest :: Int -> Int -> [Int]
-pixelTest x y = [Data.Bits.xor x y, Data.Bits.xor x y, Data.Bits.xor x y, 255]
-
-pixelData :: [Int]
-pixelData = concat [pixelTest x y | y <- [0..255], x <- [0..255]]
 
 bitmapTest :: Picture
 bitmapTest = 
