@@ -12,6 +12,8 @@ import qualified Data.ByteString
 import Data.Word (Word8)
 import qualified Data.Bits
 
+-- import Linear
+
 
 data Pos = Pos 
 	{
@@ -28,6 +30,9 @@ pos (UnalignedPos p) = p
 add :: Pos -> Pos -> Pos
 add (Pos x1 y1 z1) (Pos x2 y2 z2) = Pos (x1+x2) (y1+y2) (z1+z2)
 
+sub :: Pos -> Pos -> Pos
+sub (Pos x1 y1 z1) (Pos x2 y2 z2) = Pos (x1-x2) (y1-y2) (z1-z2)
+
 
 data Ray = Ray
 	{
@@ -39,12 +44,14 @@ normalized ray =
 	let lensqr = sqrt((x $ dir ray) * (x $ dir ray) + (y $ dir ray) * (y $ dir ray) + (z $ dir ray) * (z $ dir ray)) in
 	ray { 
 			dir = Pos {
-				x = (x $ dir ray) / lensqr * 3, 
-				y = (y $ dir ray) / lensqr * 3, 
-				z = (z $ dir ray) / lensqr * 3
+				x = (x $ dir ray) / lensqr, 
+				y = (y $ dir ray) / lensqr, 
+				z = (z $ dir ray) / lensqr
 			} 
 		}
 
+dot :: Pos -> Pos -> Float
+dot (Pos x1 y1 z1) (Pos x2 y2 z2) = x1*x2 + y1*y2 + z1*z2
 
 data TracerWorld = TracerWorld
 	{
@@ -56,7 +63,7 @@ data TracerWorld = TracerWorld
 
 main = play (InWindow "Test" (640, 480) (20,  20))
 		black
-		30
+		60
 		TracerWorld { 
 			playerPos = (UnalignedPos Pos {x=0, y=0, z=0}), 
 			keys=S.empty,
@@ -80,26 +87,63 @@ pixelTest x y =
 	]
 
 
+posAtWall :: Ray -> Pos
+posAtWall ray =
+	let walloffset = Pos {x=0, y=0, z=50} in
+	let wall_t = (z walloffset - z (loc ray)) / z (dir ray) in
+	let scaled_dir = Pos {
+		x = (x $ dir ray) * wall_t, 
+		y = (y $ dir ray) * wall_t, 
+		z = (z $ dir ray) * wall_t
+	} in
+	let hit = add (loc ray) scaled_dir in
+		hit
+
+data Sphere = Sphere { center :: Pos, radius :: Float }
+
+scalarmul :: Pos -> Float -> Pos
+scalarmul (Pos x1 y1 z1) f = Pos (x1*f) (y1*f) (z1*f)
+
+
+-- | Calculates the intersection of a ray and a sphere.
+-- Returns the t values of the intersection points, or Nothing if there is no intersection.
+intersection :: Ray -> Sphere -> Maybe Pos
+intersection (Ray origin direction) (Sphere center radius) =
+  let l = sub center origin
+      tca = Main.dot direction l
+      d2 = Main.dot l l - tca^2
+      r2 = radius^2
+      thc = sqrt (r2 - d2) 
+	  in 
+	if d2 > r2 then Nothing
+	else 
+		let t0 = tca - thc in
+		let p0 = add origin (scalarmul direction t0) in
+	Just p0
+
 subCastRay :: Ray -> Pos -> [Word8]
 subCastRay ray offset = 
-	if (z $ loc ray) < 50 - (z offset) then
-		subCastRay Ray { loc = add (loc ray) (dir ray), dir = dir ray } offset
-	else
-		let hit = loc ray in
-		let offsetX = x hit - x offset in
-		let offsetY = y hit + y offset in
-		if offsetX > -256 &&
-			offsetX < 256 && 
-			offsetY > -256 && 
-			offsetY < 256 then
-			pixelTest (round offsetX) (round offsetY)
-		else
-			[0, 0, 0, 255]
+	let offsetRay = Ray { loc = add (loc ray) offset, dir = dir ray } in
+	let hit = intersection offsetRay (Sphere { center = Pos {x=0, y=0, z=30}, radius = 5 }) in
+	let wallhit = posAtWall offsetRay in
+	case hit of
+		Just pos -> [255, 0, 0, 255]
+		Nothing -> 
+			let offsetX = x wallhit - x offset in
+			let offsetY = y wallhit - y offset in
+			if offsetX > -512 &&
+				offsetX < 512 && 
+				offsetY > -512 && 
+				offsetY < 512 then
+				pixelTest (round offsetX) (round offsetY)
+			else
+				[0, 0, 0, 255]
+
 
 castRay :: Int -> Int -> Pos -> [Word8]
 castRay y x offset = 
 	if y == 240 && x == (round $ z offset) then [255, 0, 0, 255] else
-	let ray = normalized Ray { loc = Pos {x=0, y=0, z=0-10}, dir = Pos {x=fromIntegral x-320, y=fromIntegral y - 240, z=10} } in
+	let ray = normalized Ray { loc = Pos {x=0, y=0, z=0-10}, dir = Pos {x=fromIntegral x-320, y=fromIntegral y - 240, z=240} } in
 	subCastRay ray offset
 	
 
@@ -124,8 +168,8 @@ stepWorld f w =
 	let speed = 3 in
 	let vx = (if S.member (SpecialKey KeyLeft) (keys w) then -speed else 0) +
 		 (if S.member (SpecialKey KeyRight) (keys w) then speed else 0)
-	    vy = (if S.member (SpecialKey KeyUp) (keys w) then speed else 0) +
-		 (if S.member (SpecialKey KeyDown) (keys w) then -speed else 0) in
+	    vy = (if S.member (SpecialKey KeyUp) (keys w) then -speed else 0) +
+		 (if S.member (SpecialKey KeyDown) (keys w) then speed else 0) in
 	let currentPlayerPos = pos $ playerPos w in
 	let newPlayerPos = currentPlayerPos { 
 		x = x currentPlayerPos + vx, 
@@ -134,6 +178,6 @@ stepWorld f w =
 	let currentV = offsetV w in
 	w {	
 		playerPos = UnalignedPos newPlayerPos,
-		offset = Pos {x=(x currentPlayerPos), y=(y currentPlayerPos), z=10 + 25 * (sin $ currentV / 2)},
+		offset = Pos {x=(x currentPlayerPos), y=(y currentPlayerPos), z=25 * (sin $ currentV / 2)},
 		offsetV = currentV + f
 	  }
