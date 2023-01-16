@@ -1,1 +1,1 @@
-Simple test of a Raytracer with Haskell and Gloss.
+# tracer
